@@ -1,15 +1,24 @@
-package cinemaxxi_layout
+package main
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 	"time"
+)
+
+type SeatStatus int
+
+const (
+	Free SeatStatus = iota
+	Sold
 )
 
 type StudioBioskop struct {
 	JumlahKursi      int
 	LableKursi       string
-	Menu             string
-	KursiTerjual     map[string]bool
+	KursiStatus      map[string]SeatStatus
 	LaporanPenjualan []Penjualan
 }
 
@@ -20,7 +29,7 @@ type Penjualan struct {
 
 func NewStudioBioskop() *StudioBioskop {
 	return &StudioBioskop{
-		KursiTerjual: make(map[string]bool),
+		KursiStatus: make(map[string]SeatStatus),
 	}
 }
 
@@ -28,67 +37,99 @@ func (s *StudioBioskop) KonfigurasiDenah() {
 	fmt.Println("=============== Selamat Datang (Cinema XXI), Silahkan masukkan konfigurasi denah studio ===============")
 	fmt.Print("$ Masukkan Label Kursi: ")
 	fmt.Scan(&s.LableKursi)
-	// labelKursi := "A" // Gantilah sesuai kebutuhan
 	fmt.Print("$ Masukkan Jumlah Kursi: ")
 	fmt.Scan(&s.JumlahKursi)
+	fmt.Println("")
 	fmt.Printf("Denah Studio berhasil dikonfigurasi dengan label kursi %s dan jumlah kursi %d.\n", s.LableKursi, s.JumlahKursi)
 }
+
 func (s *StudioBioskop) KonfigurasiMenu() {
+	fmt.Println("")
 	fmt.Println("=================== Aplikasi Cinema XXI Layout (kursi tersedia A-5) ===================")
+	fmt.Println("")
 	fmt.Println("=================== Pilih salah satu menu di bawah ini ===================")
 	fmt.Println("A) Pemesanan Kursi —> book_seat {seat_code}")
 	fmt.Println("B) Batalkan Kursi —> cancel_seat {seat_code}")
 	fmt.Println("C) Laporan Denah —> seats_status")
 	fmt.Println("D) Laporan Transaksi —> transaction_status")
-	fmt.Print("$ Masukkan: ")
-	fmt.Scan(&s.Menu)
+	fmt.Println("")
+	fmt.Println("Masukkan 'Exit' untuk keluar.")
+	fmt.Println("")
 }
 
-func (s *StudioBioskop) TampilkanStatusDenah() {
-	denah := s.buatDenah()
-	for i := 0; i < len(denah); i += 5 {
-		fmt.Println(denah[i : i+5])
-	}
-}
-
-func (s *StudioBioskop) buatDenah() string {
-	denah := ""
+func (s *StudioBioskop) TampilkanDenahStatus() {
+	fmt.Println("")
+	fmt.Println("=================== Denah Status ===================")
 	for i := 1; i <= s.JumlahKursi; i++ {
 		labelKursi := fmt.Sprintf("A%d", i)
-		if s.KursiTerjual[labelKursi] {
-			denah += "X " // Kursi sudah terjual
-		} else {
-			denah += "O " // Kursi tersedia
-		}
+		status := s.KursiStatus[labelKursi]
+		fmt.Printf("%s - %s\n", labelKursi, getStatusString(status))
 	}
-	return denah
+}
+
+func getStatusString(status SeatStatus) string {
+	if status == Free {
+		return "Free"
+	}
+	return "Sold"
 }
 
 func (s *StudioBioskop) BeliTiket(nomorKursi string) {
-	if s.KursiTerjual[nomorKursi] {
-		fmt.Println("Maaf, kursi sudah terjual.")
+	if status, exists := s.KursiStatus[nomorKursi]; exists {
+		if status == Free {
+			s.KursiStatus[nomorKursi] = Sold
+			waktuPenjualan := time.Now()
+			penjualan := Penjualan{NomorKursi: nomorKursi, WaktuPenjualan: waktuPenjualan}
+			s.LaporanPenjualan = append(s.LaporanPenjualan, penjualan)
+			fmt.Println("")
+			fmt.Printf("Tiket untuk kursi %s berhasil terjual pada %s.\n", nomorKursi, waktuPenjualan.Format("2-Jan-2006 15:04:05"))
+		} else {
+			fmt.Println("")
+			fmt.Println("Maaf, kursi sudah terjual.")
+		}
 	} else {
-		s.KursiTerjual[nomorKursi] = true
-		waktuPenjualan := time.Now()
-		penjualan := Penjualan{NomorKursi: nomorKursi, WaktuPenjualan: waktuPenjualan}
-		s.LaporanPenjualan = append(s.LaporanPenjualan, penjualan)
-		fmt.Printf("Tiket untuk kursi %s berhasil terjual pada %s.\n", nomorKursi, waktuPenjualan.Format(time.RFC3339))
+		fmt.Println("Nomor kursi tidak valid.")
 	}
 }
 
 func (s *StudioBioskop) BatalkanPembelian(nomorKursi string) {
-	if s.KursiTerjual[nomorKursi] {
-		delete(s.KursiTerjual, nomorKursi)
-		fmt.Printf("Pembelian tiket untuk kursi %s berhasil dibatalkan.\n", nomorKursi)
+	if status, exists := s.KursiStatus[nomorKursi]; exists {
+		if status == Sold {
+			s.KursiStatus[nomorKursi] = Free
+			fmt.Println("")
+			fmt.Printf("Pembelian tiket untuk kursi %s berhasil dibatalkan.\n", nomorKursi)
+		} else {
+			fmt.Println("")
+			fmt.Println("Maaf, kursi tidak terjual.")
+		}
 	} else {
-		fmt.Println("Maaf, kursi tidak terjual.")
+		fmt.Println("Nomor kursi tidak valid.")
 	}
 }
 
 func (s *StudioBioskop) TampilkanLaporanPenjualan() {
-	fmt.Println("Laporan Penjualan:")
+	fmt.Println("")
+	fmt.Println("=================== Denah Status ===================")
+	totalFree := 0
+	totalSold := 0
+
+	for i := 1; i <= s.JumlahKursi; i++ {
+		labelKursi := fmt.Sprintf("A%d", i)
+		status := s.KursiStatus[labelKursi]
+		fmt.Printf("%s - %s\n", labelKursi, getStatusString(status))
+
+		if status == Free {
+			totalFree++
+		} else if status == Sold {
+			totalSold++
+		}
+	}
+
+	fmt.Println("")
+	fmt.Printf("=================== Total %d Free, %d Sold, format (seat_code, datetime) ===================\n", totalFree, totalSold)
+
 	for _, penjualan := range s.LaporanPenjualan {
-		fmt.Printf("Kursi %s terjual pada %s\n", penjualan.NomorKursi, penjualan.WaktuPenjualan.Format(time.RFC3339))
+		fmt.Printf("%s, %s\n", penjualan.NomorKursi, penjualan.WaktuPenjualan.Format("2-Jan-2006 15:04:05"))
 	}
 }
 
@@ -97,62 +138,40 @@ func main() {
 	studioBioskop.KonfigurasiDenah()
 	studioBioskop.KonfigurasiMenu()
 
-	// scanner := bufio.NewScanner(os.Stdin)
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("$ Masukkan: ")
 
-	// for {
-	// 	fmt.Print("\nMasukkan perintah: ")
-	// 	scanner.Scan()
-	// 	command := scanner.Text()
+	for {
 
-	// 	switch {
-	// 	case strings.HasPrefix(command, "book_seat"):
-	// 		parts := strings.Fields(command)
-	// 		if len(parts) == 2 {
-	// 			studioBioskop.BeliTiket(parts[1])
-	// 			studioBioskop.TampilkanStatusDenah()
-	// 		} else {
-	// 			fmt.Println("Format perintah tidak valid.")
-	// 		}
+		scanner.Scan()
+		command := scanner.Text()
 
-	// 	case strings.HasPrefix(command, "cancel_seat"):
-	// 		parts := strings.Fields(command)
-	// 		if len(parts) == 2 {
-	// 			studioBioskop.BatalkanPembelian(parts[1])
-	// 			studioBioskop.TampilkanStatusDenah()
-	// 		} else {
-	// 			fmt.Println("Format perintah tidak valid.")
-	// 		}
+		switch {
+		case strings.HasPrefix(command, "book_seat"):
+			parts := strings.Fields(command)
+			if len(parts) == 2 {
+				studioBioskop.BeliTiket(parts[1])
+			} else {
+				fmt.Println("Format perintah tidak valid.")
+			}
 
-	// 	case command == "seats_status":
-	// 		studioBioskop.TampilkanStatusDenah()
+		case strings.HasPrefix(command, "cancel_seat"):
+			parts := strings.Fields(command)
+			if len(parts) == 2 {
+				studioBioskop.BatalkanPembelian(parts[1])
+			} else {
+				fmt.Println("Format perintah tidak valid.")
+			}
 
-	// 	case command == "transaction_status":
-	// 		studioBioskop.TampilkanLaporanPenjualan()
+		case command == "seats_status":
+			studioBioskop.TampilkanDenahStatus()
 
-	// 	default:
-	// 		fmt.Println("Perintah tidak valid. Coba lagi.")
-	// 	}
+		case command == "transaction_status":
+			studioBioskop.TampilkanLaporanPenjualan()
 
-	// Tampilan status denah awal
-	fmt.Println("\nDenah Awal:")
-	studioBioskop.TampilkanStatusDenah()
+		case command == "Exit" || command == "exit":
+			os.Exit(0)
 
-	// Order tiket
-	studioBioskop.BeliTiket("A01")
-	studioBioskop.BeliTiket("A03")
-	studioBioskop.BeliTiket("A05")
-
-	// Tampilan status denah setelah pembelian
-	fmt.Println("\nDenah Setelah Pembelian:")
-	studioBioskop.TampilkanStatusDenah()
-
-	// Cancel pembelian
-	studioBioskop.BatalkanPembelian("A03")
-
-	// Tampilan status denah setelah pembatalan
-	fmt.Println("\nDenah Setelah Pembatalan:")
-	studioBioskop.TampilkanStatusDenah()
-
-	// Tampilan laporan penjualan
-	studioBioskop.TampilkanLaporanPenjualan()
+		}
+	}
 }
